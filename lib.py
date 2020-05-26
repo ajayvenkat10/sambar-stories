@@ -5,7 +5,6 @@ import sys
 import requests
 import uuid
 import os
-import numpy as np
 import pandas as pd
 
 # generalized read csv method
