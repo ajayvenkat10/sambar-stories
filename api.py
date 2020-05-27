@@ -41,3 +41,4 @@ def process():
                                  get_csv_file_from_url(abandoned_carts))
 
     mail_file(to_address_email, result_file, row_count)
+    return "Done"
