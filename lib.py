@@ -1,3 +1,4 @@
+from sendgrid.helpers.mail import Mail
 from collections import defaultdict
 import math
 import csv
@@ -6,6 +7,51 @@ import requests
 import uuid
 import os
 import pandas as pd
+import os
+import base64
+from sendgrid import SendGridAPIClient
+from datetime import *
+import pytz
+from sendgrid.helpers.mail import (
+    Mail, Attachment, FileContent, FileName, FileType, Disposition)
+
+# Function to email the result file to the recepient's address
+def mail_file(to_address, result_file, row_count):
+
+    now = datetime.now()
+    tz = pytz.timezone('Asia/Kolkata')
+    your_now = now.astimezone(tz)
+
+    date_time = your_now.strftime("%m/%d/%Y, %H:%M")
+    message_text = "Issues Found: Please find attached" if(
+        row_count > 0) else "No issues found"
+
+    message = Mail(
+        from_email='ajayvenkat10@gmail.com',
+        to_emails=to_address or 'shankarnarayan91@gmail.com',
+        subject='Analysis result ' + date_time,
+        html_content='<strong>{}</strong>'.format(message_text))
+
+    if(row_count > 0):
+        with open(result_file, 'rb') as f:
+            data = f.read()
+            f.close()
+        encoded_file = base64.b64encode(data).decode()
+
+        attachedFile = Attachment(
+            FileContent(encoded_file),
+            FileName('analysis_result.csv'),
+            FileType('text/csv'),
+            Disposition('attachment')
+        )
+        message.attachment = attachedFile
+
+    try:
+        sg = SendGridAPIClient(os.environ.get('SENGRID_API_KEY'))
+        response = sg.send(message)
+        
+    except Exception as e:
+        print(e)
 
 # generalized read csv method
 def read_csv_file(file_path, delimiter, header_row):
@@ -16,6 +62,12 @@ def read_csv_file(file_path, delimiter, header_row):
 def string_parser(input_list, start, end):
     for i in range(len(input_list)):
         input_list[i] = str(input_list[i])[start:end]
+    return set(input_list)
+
+
+def float_string_parser(input_list, start, end):
+    for i in range(len(input_list)):
+        input_list[i] = str(float(input_list[i]))[start:end]
     return set(input_list)
 
 
@@ -62,34 +114,42 @@ def read_inputs():
 
 
 def write_to_result_file(transactions_in_payu_only, merchant_transaction, checkout_exports, intersection_map):
+
     result_csv = create_temp_file(suffix="_result")
+
     with open(result_csv, 'w', newline='') as file:
         writer = csv.writer(file)
         header_row = ["Payment ID", "User Name", "Transaction ID", "Amount", "Payment Successful On",
-                      "Customer Mobile", "Customer E-mail", "Billing Name"]
+                      "Customer Mobile", "Customer E-mail", "Billing Name", "Abandoned Cart Status"]
         writer.writerow(header_row)
-
+        row_count = 0
         for i in range(len(transactions_in_payu_only)):
             # Unable to handle nan cases during pre-processing, hence using a check while processing
-            if(transactions_in_payu_only[i] != "n"):
-                row = merchant_transaction.loc[merchant_transaction["Transaction ID"] == float(
-                    transactions_in_payu_only[i])]
+            if(transactions_in_payu_only[i] != "n" or transactions_in_payu_only[i] != ""):
+
+                row = merchant_transaction.loc[(merchant_transaction["Transaction ID"] == float(
+                    transactions_in_payu_only[i])) | (merchant_transaction["Transaction ID"] == int(
+                        transactions_in_payu_only[i]))]
 
                 # Only a single row is present for each ID as ID is unique, cannot access the row directly +
                 # iterator is not required so accessing using iloc
                 row_to_write = []
-                for j in range(len(header_row)-1):
-                    row_to_write.append(row[header_row[j]].iloc[0])
 
-                # inner join
-                if(intersection_map[transactions_in_payu_only[i]]):
-                    get_row = checkout_exports.loc[checkout_exports["Id"] == float(
-                        transactions_in_payu_only[i])]
-                    row_to_write.append(get_row["Billing Name"].iloc[0])
+                if(len(row) > 0):
+                    for j in range(len(header_row)-2):
+                        row_to_write.append(row[header_row[j]].iloc[0])
+
+                    # inner join
+                    if(intersection_map[transactions_in_payu_only[i]]):
+                        get_row = checkout_exports.loc[checkout_exports["Id"] == float(
+                            transactions_in_payu_only[i])]
+                        row_to_write.extend(
+                            [get_row["Billing Name"].iloc[0], "Found"])
 
                 writer.writerow(row_to_write)
+                row_count += 1
 
-    return result_csv
+    return result_csv, row_count
 
 
 def process_inputs(merchant_transaction, order_exports, checkout_exports):
@@ -100,10 +160,10 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
     notes = list(order_exports["Notes"])
     checkouts_id = list(checkout_exports["Id"])
 
-    transaction_id = string_parser(transaction_id, 0, -2)
+    transaction_id = float_string_parser(transaction_id, 0, -2)
     payment_reference = string_parser(payment_reference, 1, -2)
-    checkouts_id = string_parser(checkouts_id, 0, -2)
-    notes = string_parser(notes, 0, -2)
+    checkouts_id = float_string_parser(checkouts_id, 0, -2)
+    notes = float_string_parser(notes, 0, -2)
 
     transactions_in_payu_only = transaction_id.difference(payment_reference)
 
@@ -116,13 +176,15 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
     intersection_map = set_map_values(
         realised_transactions_with_abandoned_carts)
 
-    return write_to_result_file(transactions_in_payu_only,
-                                merchant_transaction, checkout_exports, intersection_map)
+    result, row_count = write_to_result_file(transactions_in_payu_only,
+                                             merchant_transaction, checkout_exports, intersection_map)
+
+    mail_file("shankarnarayan91@gmail.com", result, row_count)
 
 
 def main():
-    process_inputs(read_inputs())
-
+    merchant_trans, orders_exp, checkouts_exp = read_inputs()
+    process_inputs(merchant_trans, orders_exp, checkouts_exp)
 
 if __name__ == "__main__":
     main()
