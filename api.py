@@ -18,7 +18,7 @@ def process():
     request_json = request.get_json()
     print(request_json)
     responses = request_json["responses"]
-
+    print(responses)
     shopify_orders = ""
     payu_trans = ""
     abandoned_carts = ""
