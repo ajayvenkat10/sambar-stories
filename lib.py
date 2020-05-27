@@ -47,9 +47,9 @@ def mail_file(to_address, result_file, row_count):
         message.attachment = attachedFile
 
     try:
-        sg = SendGridAPIClient(
-            "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")
-
+        sg = SendGridAPIClient(os.environ.get('SENGRID_API_KEY'))
+        response = sg.send(message)
+        
     except Exception as e:
         print(e)
 
