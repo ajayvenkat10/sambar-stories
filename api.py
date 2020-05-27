@@ -16,8 +16,6 @@ def index():
 @app.route('/process', methods=['POST'])
 def process():
     request_json = request.get_json()
-    print(request.headers)
-    print(request.data)
     print(request_json)
     responses = request_json["responses"]
 
