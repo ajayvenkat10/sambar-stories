@@ -179,7 +179,7 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
     result, row_count = write_to_result_file(transactions_in_payu_only,
                                              merchant_transaction, checkout_exports, intersection_map)
 
-    mail_file("shankarnarayan91@gmail.com", result, row_count)
+    return result, row_count
 
 
 def main():
