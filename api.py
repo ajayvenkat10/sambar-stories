@@ -16,6 +16,7 @@ def index():
 @app.route('/process', methods=['POST'])
 def process():
     request_json = request.get_json()
+    print(request_json)
     responses = request_json["responses"]
 
     shopify_orders = ""
