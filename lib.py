@@ -12,8 +12,11 @@ import base64
 from sendgrid import SendGridAPIClient
 from datetime import *
 import pytz
+from PayUPaymentServiceProvider import *
+
 from sendgrid.helpers.mail import (
     Mail, Attachment, FileContent, FileName, FileType, Disposition)
+
 
 # Function to email the result file to the recepient's address
 def mail_file(to_address, result_file, row_count):
@@ -49,11 +52,13 @@ def mail_file(to_address, result_file, row_count):
     try:
         sg = SendGridAPIClient(os.environ.get('SENGRID_API_KEY'))
         response = sg.send(message)
-        
+
     except Exception as e:
         print(e)
 
 # generalized read csv method
+
+
 def read_csv_file(file_path, delimiter, header_row):
     return pd.read_csv(file_path, sep=delimiter, header=header_row)
 
@@ -70,15 +75,9 @@ def float_string_parser(input_list, start, end):
         input_list[i] = str(float(input_list[i]))[start:end]
     return set(input_list)
 
-
-# Pre-processing to remove unwanted rows
-def pre_process_merchant_dataframe(merchant_transaction):
-    return merchant_transaction.loc[(merchant_transaction["Status of Transaction"] == "Amt. deposited in bank a/c") |
-                                    (merchant_transaction["Status of Transaction"] == "Payment Successful") |
-                                    (merchant_transaction["Status of Transaction"] == "Settlement In Progress")]
-
-
 # Initializing map
+
+
 def set_map_values(intersection):
     intersection = list(intersection)
     map = defaultdict(bool)
@@ -126,9 +125,9 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
         for i in range(len(transactions_in_payu_only)):
             # Unable to handle nan cases during pre-processing, hence using a check while processing
             if(transactions_in_payu_only[i] != "n" or transactions_in_payu_only[i] != ""):
-
-                row = merchant_transaction.loc[(merchant_transaction["Transaction ID"] == float(
-                    transactions_in_payu_only[i])) | (merchant_transaction["Transaction ID"] == int(
+                merchant_trans = merchant_transaction.getMerchantTransaction()
+                row = merchant_trans.loc[(merchant_trans["Transaction ID"] == float(
+                    transactions_in_payu_only[i])) | (merchant_trans["Transaction ID"] == int(
                         transactions_in_payu_only[i]))]
 
                 # Only a single row is present for each ID as ID is unique, cannot access the row directly +
@@ -153,14 +152,13 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
 
 
 def process_inputs(merchant_transaction, order_exports, checkout_exports):
-    merchant_transaction = pre_process_merchant_dataframe(merchant_transaction)
+    merchant_transaction = PayUPaymentServiceProvider(merchant_transaction)
 
-    transaction_id = list(merchant_transaction["Transaction ID"])
+    transaction_id = merchant_transaction.getTransactionId()
     payment_reference = list(order_exports["Payment Reference"])
     notes = list(order_exports["Notes"])
     checkouts_id = list(checkout_exports["Id"])
 
-    transaction_id = float_string_parser(transaction_id, 0, -2)
     payment_reference = string_parser(payment_reference, 1, -2)
     checkouts_id = float_string_parser(checkouts_id, 0, -2)
     notes = float_string_parser(notes, 0, -2)
@@ -185,6 +183,7 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
 def main():
     merchant_trans, orders_exp, checkouts_exp = read_inputs()
     process_inputs(merchant_trans, orders_exp, checkouts_exp)
+
 
 if __name__ == "__main__":
     main()
