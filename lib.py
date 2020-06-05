@@ -12,8 +12,12 @@ import base64
 from sendgrid import SendGridAPIClient
 from datetime import *
 import pytz
+from PaymentServiceProvider import *
+from PayUPSP import * 
+
 from sendgrid.helpers.mail import (
     Mail, Attachment, FileContent, FileName, FileType, Disposition)
+
 
 # Function to email the result file to the recepient's address
 def mail_file(to_address, result_file, row_count):
@@ -49,11 +53,13 @@ def mail_file(to_address, result_file, row_count):
     try:
         sg = SendGridAPIClient(os.environ.get('SENGRID_API_KEY'))
         response = sg.send(message)
-        
+
     except Exception as e:
         print(e)
 
 # generalized read csv method
+
+
 def read_csv_file(file_path, delimiter, header_row):
     return pd.read_csv(file_path, sep=delimiter, header=header_row)
 
@@ -70,15 +76,9 @@ def float_string_parser(input_list, start, end):
         input_list[i] = str(float(input_list[i]))[start:end]
     return set(input_list)
 
-
-# Pre-processing to remove unwanted rows
-def pre_process_merchant_dataframe(merchant_transaction):
-    return merchant_transaction.loc[(merchant_transaction["Status of Transaction"] == "Amt. deposited in bank a/c") |
-                                    (merchant_transaction["Status of Transaction"] == "Payment Successful") |
-                                    (merchant_transaction["Status of Transaction"] == "Settlement In Progress")]
-
-
 # Initializing map
+
+
 def set_map_values(intersection):
     intersection = list(intersection)
     map = defaultdict(bool)
@@ -113,7 +113,7 @@ def read_inputs():
             read_csv_file(sys.argv[3], ",", 0))
 
 
-def write_to_result_file(transactions_in_payu_only, merchant_transaction, checkout_exports, intersection_map):
+def write_to_result_file(transactions_in_payu_only, payment_provider, checkout_exports, intersection_map):
 
     result_csv = create_temp_file(suffix="_result")
 
@@ -126,9 +126,9 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
         for i in range(len(transactions_in_payu_only)):
             # Unable to handle nan cases during pre-processing, hence using a check while processing
             if(transactions_in_payu_only[i] != "n" or transactions_in_payu_only[i] != ""):
-
-                row = merchant_transaction.loc[(merchant_transaction["Transaction ID"] == float(
-                    transactions_in_payu_only[i])) | (merchant_transaction["Transaction ID"] == int(
+                provider_dataframe = payment_provider.getProviderCSV()
+                row = provider_dataframe.loc[(provider_dataframe["Transaction ID"] == float(
+                    transactions_in_payu_only[i])) | (provider_dataframe["Transaction ID"] == int(
                         transactions_in_payu_only[i]))]
 
                 # Only a single row is present for each ID as ID is unique, cannot access the row directly +
@@ -152,15 +152,14 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
     return result_csv, row_count
 
 
-def process_inputs(merchant_transaction, order_exports, checkout_exports):
-    merchant_transaction = pre_process_merchant_dataframe(merchant_transaction)
+def process_inputs(payment_provider, order_exports, checkout_exports):
+    payment_provider = PayU(payment_provider)
 
-    transaction_id = list(merchant_transaction["Transaction ID"])
+    transaction_id = payment_provider.getProviderTransactions()
     payment_reference = list(order_exports["Payment Reference"])
     notes = list(order_exports["Notes"])
     checkouts_id = list(checkout_exports["Id"])
 
-    transaction_id = float_string_parser(transaction_id, 0, -2)
     payment_reference = string_parser(payment_reference, 1, -2)
     checkouts_id = float_string_parser(checkouts_id, 0, -2)
     notes = float_string_parser(notes, 0, -2)
@@ -177,7 +176,7 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
         realised_transactions_with_abandoned_carts)
 
     result, row_count = write_to_result_file(transactions_in_payu_only,
-                                             merchant_transaction, checkout_exports, intersection_map)
+                                             payment_provider, checkout_exports, intersection_map)
 
     return result, row_count
 
@@ -185,6 +184,7 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
 def main():
     merchant_trans, orders_exp, checkouts_exp = read_inputs()
     process_inputs(merchant_trans, orders_exp, checkouts_exp)
+
 
 if __name__ == "__main__":
     main()
