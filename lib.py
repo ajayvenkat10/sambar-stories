@@ -12,7 +12,8 @@ import base64
 from sendgrid import SendGridAPIClient
 from datetime import *
 import pytz
-from PayUPaymentServiceProvider import *
+from PaymentServiceProvider import *
+from PayUPSP import * 
 
 from sendgrid.helpers.mail import (
     Mail, Attachment, FileContent, FileName, FileType, Disposition)
@@ -112,7 +113,7 @@ def read_inputs():
             read_csv_file(sys.argv[3], ",", 0))
 
 
-def write_to_result_file(transactions_in_payu_only, merchant_transaction, checkout_exports, intersection_map):
+def write_to_result_file(transactions_in_payu_only, payment_provider, checkout_exports, intersection_map):
 
     result_csv = create_temp_file(suffix="_result")
 
@@ -125,9 +126,9 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
         for i in range(len(transactions_in_payu_only)):
             # Unable to handle nan cases during pre-processing, hence using a check while processing
             if(transactions_in_payu_only[i] != "n" or transactions_in_payu_only[i] != ""):
-                merchant_trans = merchant_transaction.getMerchantTransaction()
-                row = merchant_trans.loc[(merchant_trans["Transaction ID"] == float(
-                    transactions_in_payu_only[i])) | (merchant_trans["Transaction ID"] == int(
+                provider_dataframe = payment_provider.getProviderCSV()
+                row = provider_dataframe.loc[(provider_dataframe["Transaction ID"] == float(
+                    transactions_in_payu_only[i])) | (provider_dataframe["Transaction ID"] == int(
                         transactions_in_payu_only[i]))]
 
                 # Only a single row is present for each ID as ID is unique, cannot access the row directly +
@@ -151,10 +152,10 @@ def write_to_result_file(transactions_in_payu_only, merchant_transaction, checko
     return result_csv, row_count
 
 
-def process_inputs(merchant_transaction, order_exports, checkout_exports):
-    merchant_transaction = PayUPaymentServiceProvider(merchant_transaction)
+def process_inputs(payment_provider, order_exports, checkout_exports):
+    payment_provider = PayU(payment_provider)
 
-    transaction_id = merchant_transaction.getTransactionId()
+    transaction_id = payment_provider.getProviderTransactions()
     payment_reference = list(order_exports["Payment Reference"])
     notes = list(order_exports["Notes"])
     checkouts_id = list(checkout_exports["Id"])
@@ -175,7 +176,7 @@ def process_inputs(merchant_transaction, order_exports, checkout_exports):
         realised_transactions_with_abandoned_carts)
 
     result, row_count = write_to_result_file(transactions_in_payu_only,
-                                             merchant_transaction, checkout_exports, intersection_map)
+                                             payment_provider, checkout_exports, intersection_map)
 
     return result, row_count
 
